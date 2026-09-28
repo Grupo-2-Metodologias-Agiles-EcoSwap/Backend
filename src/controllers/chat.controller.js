@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabaseClient.js';
 import { TABLES } from '../constants/entities.js';
+import { moderateChatMessage } from '../service/geminiService.js';
 
 /**
  * Crea una nueva conversación (Chat).
@@ -129,7 +130,7 @@ export const sendChatMessage = async (req, res) => {
 
     const receiverId = userId === chat.buyer_id ? chat.seller_id : chat.buyer_id;
 
-    // Insertar mensaje
+    // 1. Insertar y entregar el mensaje de inmediato (Cero latencia de espera para el usuario)
     const { data: message, error: insertError } = await supabase
       .from(TABLES.MESSAGES)
       .insert([{
@@ -142,11 +143,36 @@ export const sendChatMessage = async (req, res) => {
       .single();
 
     if (insertError) return res.status(400).json({ error: insertError.message });
+
+    // Responder inmediatamente al remitente
     res.status(201).json(message);
+
+    // 2. Moderación en segundo plano (asíncrona) con Gemini IA
+    // Si el mensaje es una propuesta estructurada (JSON meetup/system), omitir análisis de texto
+    const isSpecialPayload = typeof content === 'string' && content.trim().startsWith('{');
+    if (!isSpecialPayload) {
+      moderateChatMessage({ content })
+        .then(async (moderation) => {
+          if (!moderation.allowed) {
+            console.warn(`[Moderación IA] Mensaje ${message.id} bloqueado. Motivo: ${moderation.reason}`);
+            // Reemplaza el mensaje en Supabase; Realtime notificará automáticamente a ambos clientes
+            await supabase
+              .from(TABLES.MESSAGES)
+              .update({
+                content: `🚫 [Mensaje eliminado por moderación automática: ${moderation.reason}]`
+              })
+              .eq('id', message.id);
+          }
+        })
+        .catch((err) => {
+          console.warn('[Moderación IA Chat Background] Error no crítico:', err.message);
+        });
+    }
   } catch (error) {
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 };
+
 
 /**
  * Elimina una conversación (Chat) y por cascada sus mensajes y reuniones.

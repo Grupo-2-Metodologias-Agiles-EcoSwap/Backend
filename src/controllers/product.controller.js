@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabaseClient.js';
 import cloudinary from '../config/cloudinary.js';
 import { TABLES } from '../constants/entities.js';
+import { moderateProductContent } from '../service/geminiService.js';
 
 /**
  * Extracts Cloudinary public ID from a secure URL.
@@ -32,13 +33,40 @@ const getPublicIdFromUrl = (url) => {
 
 /**
  * Registra un nuevo producto.
- * Primero sube la imagen (Base64) a Cloudinary para optimización
- * y luego guarda la URL resultante en la base de datos de Supabase.
+ * Valida moderación con Gemini IA antes de procesar imágenes y guardar en BD.
  */
 export const createProduct = async (req, res) => {
   console.log('createProduct received body:', req.body);
   const { title, price, imagesBase64, category, description, type, subject } = req.body;
   let uploadUrls = [];
+
+  // Moderación preventiva con Gemini IA
+  try {
+    const DATA_URL = /^data:(image\/[a-z]+);base64,(.+)$/is;
+    const moderationImages = (imagesBase64 ?? [])
+      .slice(0, 3)
+      .map((dataUrl) => dataUrl.match(DATA_URL))
+      .filter(Boolean)
+      .map(([, mimeType, base64]) => ({ mimeType: mimeType.toLowerCase(), base64 }));
+
+    const moderation = await moderateProductContent({
+      title,
+      description,
+      category,
+      images: moderationImages
+    });
+
+    if (!moderation.allowed) {
+      return res.status(422).json({
+        error: moderation.reason || 'La publicación no cumple con las normas de la comunidad universitaria.',
+        category: moderation.category,
+        isModerated: true
+      });
+    }
+  } catch (modErr) {
+    console.warn('[createProduct] Aviso de moderación IA:', modErr.message);
+  }
+
 
   try {
     if (imagesBase64 && imagesBase64.length > 0) {

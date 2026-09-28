@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { gemini, GEMINI_MODEL, GEMINI_EMBED_MODEL } from "../config/gemini.js";
-import { descriptionResultSchema } from "../schemas/gemini.schema.js";
+import { descriptionResultSchema, moderationResultSchema } from "../schemas/gemini.schema.js";
 
 export async function generateJson({ prompt, schema, images = [] }) {
     const input = [{ type: "text", text: prompt }];
@@ -61,3 +61,62 @@ ${datos || "(sin datos, usa solo las fotos)"}
 
     return generateJson({ prompt, schema: descriptionResultSchema, images });
 }
+
+/**
+ * Modera una publicación universitaria (título, descripción, categoría, imágenes).
+ * Detecta:
+ * - Fraude académico (solucionarios ilegales, exámenes filtrados, compra de tesis/ensayos).
+ * - Sustancias prohibidas, drogas, tabaco o alcohol.
+ * - Armas, explosivos o artículos peligrosos.
+ * - Contenido sexual, explícito o apuestas.
+ * - Intento de estafa o spam malicioso.
+ */
+export async function moderateProductContent({ title, description, category, images = [] }) {
+    const prompt = `Eres el supervisor de seguridad y moderador de contenido de EcoSwap, una plataforma universitaria donde estudiantes intercambian y donan libros, apuntes, calculadoras, batas y materiales de estudio.
+
+Tu tarea es evaluar si la siguiente publicación cumple con las normas de seguridad del campus y de la comunidad.
+
+CRITERIOS DE RECHAZO (allowed: false):
+1. Fraude académico: Venta de respuestas de exámenes, tesis listas para presentar por encargo, filtraciones de evaluaciones o suplantación en exámenes.
+2. Sustancias controladas: Venta de alcohol, drogas, medicamentos bajo receta, cigarrillos o vapeadores.
+3. Armas o peligro: Armas de fuego, pirotecnia, objetos cortopunzantes no educativos, químicos peligrosos.
+4. Contenido para adultos / Acoso: Contenido sexual, desnudez en imágenes, discriminación, insultos o amenazas.
+5. Estafas o Spam: Enlaces a páginas de phishing, pirámides financieras o artículos robados.
+
+CRITERIOS DE ACEPTACIÓN (allowed: true):
+- Libros de texto, calculadoras, batas de laboratorio, uniformes, materiales de arte/arquitectura, electrónica de estudio (laptops, tablets), apuntes y resúmenes de estudio legítimos.
+
+DATOS A EVALUAR:
+Título: ${title || "(sin título)"}
+Categoría: ${category || "(sin categoría)"}
+Descripción: ${description || "(sin descripción)"}
+
+Devuelve un JSON con:
+- allowed: true si es apto, false si infringe las normas.
+- reason: Explicación amigable y breve en español de la decisión (si es rechazado, explica qué norma incumple para orientar al estudiante; si es aprobado, una breve confirmación).
+- category: Si fue rechazado, especifica la categoría ("Fraude académico", "Sustancias prohibidas", "Armas o peligro", "Contenido explícito", "Estafa o spam"). Si fue aprobado, devuelve null.`;
+
+    return generateJson({ prompt, schema: moderationResultSchema, images });
+}
+
+/**
+ * Modera un mensaje de chat para prevenir insultos, acoso, estafas o enlaces sospechosos.
+ */
+export async function moderateChatMessage({ content }) {
+    const prompt = `Eres el moderador del chat de EcoSwap, una aplicación para estudiantes universitarios.
+Evalúa el siguiente mensaje enviado entre estudiantes para coordinar un intercambio.
+
+Mensaje:
+"${content}"
+
+CRITERIOS:
+- Rechazar (allowed: false) si contiene: insultos graves, amenazas, acoso, lenguaje de odio, links de phishing conocidos o intentos evidentes de extorsión.
+- Aceptar (allowed: true): saludos, negociaciones de intercambio de materiales de clase, dudas sobre el producto, puntos de encuentro en el campus.
+
+Devuelve:
+- allowed: boolean
+- reason: Explicación breve
+- category: Causa del rechazo si aplica ("Acoso o insultos", "Phishing o estafa", "Amenazas"), o null si es válido.`;
+
+    return generateJson({ prompt, schema: moderationResultSchema });
+}
