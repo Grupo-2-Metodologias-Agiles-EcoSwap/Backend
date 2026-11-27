@@ -2,26 +2,75 @@ import { z } from 'zod';
 
 const IMAGE_DATA_URL = /^data:image\/(jpeg|png|webp);base64,.+/i;
 
-export const generateDescriptionSchema = z
-    .object({
-        title: z.string().trim().max(100).nullish(),
-        category: z.string().trim().max(60).nullish(), // nombre de la categoría, no el id
-        type: z.enum(['sale', 'wanted']).nullish(),
-        status: z.string().trim().max(30).nullish(),
-        subject: z.string().trim().max(100).nullish(),
+const baseProductContext = z.object({
+    title: z.string().trim().max(100).nullish(),
+    category: z.string().trim().max(60).nullish(),
+    type: z.enum(['sale', 'wanted']).nullish(),
+    status: z.string().trim().max(30).nullish(),
+    subject: z.string().trim().max(100).nullish(),
+    imagesBase64: z
+        .array(z.string())
+        .transform((arr) => arr.filter((s) => IMAGE_DATA_URL.test(s)))
+        .nullish(),
+});
 
-        imagesBase64: z
-            .array(z.string())
-            .transform((arr) => arr.filter((s) => IMAGE_DATA_URL.test(s)))
+// Mantener compatibilidad con el endpoint /generate-description existente
+export const generateDescriptionSchema = baseProductContext.refine(
+    (d) => d.title || (d.imagesBase64 && d.imagesBase64.length > 0),
+    'Envía al menos un título o una imagen nueva'
+);
+
+export const generateFieldsSchema = baseProductContext
+    .extend({
+        fields: z
+            .array(z.enum(['title', 'price', 'description', 'categoryId', 'subject', 'status']))
+            .min(1, 'Indica al menos un campo a generar')
+            .default(['description']),
+        // Catálogo de categorías disponibles; requerido cuando se pide categoryId
+        availableCategories: z
+            .array(z.object({ id: z.union([z.string(), z.number()]), name: z.string() }))
             .nullish(),
     })
     .refine(
         (d) => d.title || (d.imagesBase64 && d.imagesBase64.length > 0),
-        'Envía al menos un título o una imagen nueva'
+        'Envía al menos un título o una imagen para poder generar campos'
     );
 
 export const descriptionResultSchema = z.object({
     description: z.string().min(1).max(600).describe('Descripción de la publicación en español'),
+});
+
+export const fieldsResultSchema = z.object({
+    title: z
+        .string()
+        .trim()
+        .max(100)
+        .nullish()
+        .describe('Título conciso del producto (máx 100 caracteres), o null si no fue solicitado'),
+    price: z
+        .number()
+        .nonnegative()
+        .nullish()
+        .describe('Precio sugerido en soles peruanos como número, o null si no fue solicitado o no es determinable'),
+    description: z
+        .string()
+        .max(600)
+        .nullish()
+        .describe('Descripción de la publicación en español (2-4 oraciones), o null si no fue solicitada'),
+    categoryId: z
+        .union([z.string(), z.number()])
+        .nullish()
+        .describe('ID exacto de la categoría del catálogo provisto, o null si no fue solicitado o no se puede determinar'),
+    subject: z
+        .string()
+        .trim()
+        .max(100)
+        .nullish()
+        .describe('Materia o curso relacionado inferido (ej: "Cálculo II", "Fisicoquímica"), o null si no fue solicitado o no se puede inferir'),
+    status: z
+        .enum(['new', 'used'])
+        .nullish()
+        .describe('"new" si el producto luce sin uso, "used" si tiene marcas de uso, o null si no fue solicitado o no hay imágenes suficientes'),
 });
 
 export const moderateProductSchema = z.object({
@@ -42,4 +91,4 @@ export const moderationResultSchema = z.object({
 
 export const moderateMessageSchema = z.object({
     content: z.string().trim().min(1, 'El mensaje no puede estar vacío').max(1000),
-});
+});
