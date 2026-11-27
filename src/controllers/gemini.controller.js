@@ -1,10 +1,11 @@
-import { generateProductDescription, moderateProductContent, moderateChatMessage } from '../service/geminiService.js';
+import { generateProductDescription, generateProductFields, moderateProductContent, moderateChatMessage } from '../service/geminiService.js';
 
 const DATA_URL = /^data:(image\/[a-z]+);base64,(.+)$/is;
 const MAX_IMAGES = 3;
 
 /**
  * Genera una descripción sugerida para una publicación a partir de los datos del formulario y, opcionalmente, de las fotos.
+ * Mantiene compatibilidad con clientes que ya usan este endpoint.
  */
 export const generateDescription = async (req, res) => {
     const { title, category, type, status, subject, imagesBase64 } = req.body;
@@ -29,6 +30,37 @@ export const generateDescription = async (req, res) => {
     } catch (error) {
         console.error('[generateDescription] falló:', error.message);
         res.status(503).json({ error: 'No se pudo generar la descripción. Puedes escribirla manualmente.' });
+    }
+};
+
+/**
+ * Genera uno o más campos (title, price, description, categoryId, subject, status) en un solo viaje a Gemini.
+ */
+export const generateFields = async (req, res) => {
+    const { title, category, type, status, subject, imagesBase64, fields, availableCategories } = req.body;
+
+    try {
+        const images = (imagesBase64 ?? [])
+            .slice(0, MAX_IMAGES)
+            .map((dataUrl) => dataUrl.match(DATA_URL))
+            .filter(Boolean)
+            .map(([, mimeType, base64]) => ({ mimeType: mimeType.toLowerCase(), base64 }));
+
+        const result = await generateProductFields({
+            title,
+            category,
+            type,
+            status,
+            subject,
+            images,
+            fields,
+            availableCategories: availableCategories ?? [],
+        });
+
+        res.status(200).json(result);
+    } catch (error) {
+        console.error('[generateFields] falló:', error.message);
+        res.status(503).json({ error: 'No se pudieron generar los campos. Intenta de nuevo o completa manualmente.' });
     }
 };
 
@@ -81,4 +113,4 @@ export const moderateMessage = async (req, res) => {
             category: null,
         });
     }
-};
+};
