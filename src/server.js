@@ -13,6 +13,7 @@ import chatRoutes from './routes/chat.routes.js';
 import favoriteRoutes from './routes/favorite.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import aiRoutes from './routes/gemini.routes.js';
+import chatbotRoutes from './routes/chatbot.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,6 +41,7 @@ app.use('/chats', chatRoutes);
 app.use('/favorites', favoriteRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/ai', aiRoutes);
+app.use('/chatbot', chatbotRoutes);
 
 export { app, server };
 

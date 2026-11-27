@@ -100,3 +100,6 @@ CLOUDINARY_API_SECRET=tu_cloudinary_api_secret
 - `POST /reports` - Crea un reporte de un producto o usuario.
 - `GET /reports` - Lista los reportes pendientes (equipo de administración).
 - `GET /reports/:id` - Detalle de un reporte específico.
+
+### 🤖 Asistente virtual (`/chatbot`)
+- `POST /chatbot` - Envía una pregunta a EcoBot. Cuerpo: `{ "message": "...", "history": [{ "role": "user" | "assistant", "text": "..." }] }`. Responde `{ "reply": "...", "products": [{ "id", "title", "price", "type", "image" }] }` con productos reales del catálogo cuando aplica. Requiere `GEMINI_API_KEY` en el `.env`.
